@@ -126,6 +126,7 @@ windows_vs2017: &windows_vs2017
   install:
     - choco install innoextract
     - choco install maven --ignore-dependencies
+    - choco install winflexbison3
     - wget -q https://dl.bintray.com/conan/installers/conan-win-64_1_10_0.exe
     - innoextract conan-win-64_1_10_0.exe
     - eval "export PATH=\"$(pwd)/app/conan:${PATH}\""

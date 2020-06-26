@@ -22,8 +22,8 @@
 #include "dds/ddsrt/misc.h"
 #include "dds/ddsrt/log.h"
 #include "dds/ddsc/dds_public_impl.h"
-#include "dds/ddsts/typetree.h"
-#include "dds/ddsts/type_walk.h"
+#include "typetree.h"
+#include "type_walk.h"
 #include "gen_ostream.h"
 #include "gen_c99.h"
 

@@ -14,7 +14,7 @@
 #include <assert.h>
 #include "dds/ddsrt/retcode.h"
 #include "dds/ddsrt/heap.h"
-#include "dds/ddsts/typetree.h"
+#include "typetree.h"
 
 
 void ddsts_free_literal(ddsts_literal_t *literal)

@@ -88,13 +88,6 @@ idl_log(
   if (cnt == -1)
     return;
 
-  off += (size_t)cnt;
-
-  if (off >= sizeof(buf))
-    buf[sizeof(buf) - 1] = '\0';
-  else
-    buf[off] = '\0';
-
   fprintf(stderr, "%s\n", buf);
 }
 

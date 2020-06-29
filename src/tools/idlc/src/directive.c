@@ -131,6 +131,7 @@ push_keylist(idl_processor_t *proc, idl_keylist_t *dir)
     ddsrt_free(*key);
     *key = NULL;
   }
+  ddsrt_free(dir->keys);
   ddsrt_free(dir);
   proc->directive = NULL;
   switch (ddsts_pragma_close(proc->context)) {

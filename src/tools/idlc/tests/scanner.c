@@ -99,6 +99,8 @@ test_scanner(idl_processor_t *proc, idl_token_t *tokvec)
     switch (code) {
       case IDL_TOKEN_IDENTIFIER:
       case IDL_TOKEN_PP_NUMBER:
+      case IDL_TOKEN_CHAR_LITERAL:
+      case IDL_TOKEN_STRING_LITERAL:
         ddsrt_free(tok.value.str);
         break;
       default:

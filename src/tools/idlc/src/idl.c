@@ -50,7 +50,24 @@ void idl_processor_fini(idl_processor_t *proc)
       idl_yypstate_delete((idl_yypstate *)proc->parser.yypstate);
     if (proc->context)
       ddsts_free_context(proc->context);
-
+    if (proc->directive) {
+      switch (proc->directive->type) {
+        case IDL_LINE: {
+          idl_line_t *dir = (idl_line_t *)proc->directive;
+          ddsrt_free(dir->file);
+        } break;
+        case IDL_KEYLIST: {
+          idl_keylist_t *dir = (idl_keylist_t *)proc->directive;
+          ddsrt_free(dir->data_type);
+          for (char **keys = dir->keys; keys && *keys; keys++)
+            ddsrt_free(*keys);
+          ddsrt_free(dir->keys);
+        } break;
+        default:
+          break;
+      }
+      ddsrt_free(proc->directive);
+    }
     for (file = proc->files; file; file = next) {
       next = file->next;
       if (file->name)

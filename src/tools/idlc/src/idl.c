@@ -23,6 +23,7 @@
 #include "tt_create.h"
 
 #include "dds/ddsrt/heap.h"
+#include "dds/ddsrt/io.h"
 #include "dds/ddsrt/log.h"
 #include "dds/ddsrt/misc.h"
 #include "dds/ddsrt/string.h"

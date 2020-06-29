@@ -348,7 +348,7 @@ scan_pp_number(idl_processor_t *proc, const char *cur, const char **lim)
 static int32_t
 scan_identifier(idl_processor_t *proc, const char *cur, const char **lim)
 {
-  int cnt;
+  int cnt = 0;
   const char *end;
 
   for (end = cur; cur < proc->scanner.limit; end = cur) {

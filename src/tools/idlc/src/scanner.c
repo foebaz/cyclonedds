@@ -29,16 +29,16 @@ static int32_t
 have_newline(idl_processor_t *proc, const char *cur)
 {
   if (cur == proc->scanner.limit)
-    return proc->state & IDL_WRITE ? -2 : 0;
+    return proc->flags & IDL_WRITE ? -2 : 0;
   assert(cur < proc->scanner.limit);
   if (cur[0] == '\n') {
     if (cur < proc->scanner.limit - 1)
       return cur[1] == '\r' ? 2 : 1;
-    return proc->state & IDL_WRITE ? -1 : 1;
+    return proc->flags & IDL_WRITE ? -1 : 1;
   } else if (cur[0] == '\r') {
     if (cur < proc->scanner.limit - 1)
       return cur[1] == '\n' ? 2 : 1;
-    return proc->state & IDL_WRITE ? -1 : 1;
+    return proc->flags & IDL_WRITE ? -1 : 1;
   }
   return 0;
 }
@@ -48,7 +48,7 @@ have_skip(idl_processor_t *proc, const char *cur)
 {
   int cnt = 0;
   if (cur == proc->scanner.limit)
-    return proc->state & IDL_WRITE ? -3 : 0;
+    return proc->flags & IDL_WRITE ? -3 : 0;
   assert(cur < proc->scanner.limit);
   if (*cur == '\\' && (cnt = have_newline(proc, cur + 1)) > 0)
     cnt++;
@@ -59,7 +59,7 @@ static int32_t
 have_space(idl_processor_t *proc, const char *cur)
 {
   if (cur == proc->scanner.limit)
-    return proc->state & IDL_WRITE ? -2 : 0;
+    return proc->flags & IDL_WRITE ? -2 : 0;
   assert(cur < proc->scanner.limit);
   if (*cur == ' ' || *cur == '\t' || *cur == '\f' || *cur == '\v')
     return 1;
@@ -70,7 +70,7 @@ static int32_t
 have_digit(idl_processor_t *proc, const char *cur)
 {
   if (cur == proc->scanner.limit)
-    return proc->state & IDL_WRITE ? -1 : 0;
+    return proc->flags & IDL_WRITE ? -1 : 0;
   assert(cur < proc->scanner.limit);
   return (*cur >= '0' && *cur <= '9');
 }
@@ -79,7 +79,7 @@ static int32_t
 have_alpha(idl_processor_t *proc, const char *cur)
 {
   if (cur == proc->scanner.limit)
-    return proc->state & IDL_WRITE ? -1 : 0;
+    return proc->flags & IDL_WRITE ? -1 : 0;
   assert(cur < proc->scanner.limit);
   return (*cur >= 'a' && *cur <= 'z') ||
          (*cur >= 'A' && *cur <= 'Z') ||
@@ -90,7 +90,7 @@ static int32_t
 have_alnum(idl_processor_t *proc, const char *cur)
 {
   if (cur == proc->scanner.limit)
-    return proc->state & IDL_WRITE ? -1 : 0;
+    return proc->flags & IDL_WRITE ? -1 : 0;
   assert(cur < proc->scanner.limit);
   return (*cur >= 'a' && *cur <= 'z') ||
          (*cur >= 'A' && *cur <= 'Z') ||
@@ -367,10 +367,10 @@ scan_identifier(idl_processor_t *proc, const char *cur, const char **lim)
   if (cnt < 0)
     return IDL_NEED_REFILL;
   /* detect if scope is attached to identifier if scanning code */
-  if ((proc->state & IDL_SCAN_CODE) && (cnt = have(proc, cur, "::")) < 0)
+  if (((int)proc->state & (int)IDL_SCAN_CODE) && (cnt = have(proc, cur, "::")) < 0)
     return IDL_NEED_REFILL;
   if (cnt > 0)
-    proc->state |= IDL_SCAN_SCOPED_NAME;
+    proc->state = IDL_SCAN_SCOPED_NAME;
   *lim = end;
   return IDL_TOKEN_IDENTIFIER;
 }
@@ -415,12 +415,12 @@ scan_scope(idl_processor_t *proc, const char *cur, const char **lim)
       (*cur >= 'A' && *cur <= 'Z') ||
       (*cur == '_'))
   {
-    if (proc->state & IDL_SCAN_SCOPED_NAME)
+    if (proc->state == IDL_SCAN_SCOPED_NAME)
       return IDL_TOKEN_SCOPE_LR;
     else
       return IDL_TOKEN_SCOPE_R;
   } else {
-    if (proc->state & IDL_SCAN_SCOPED_NAME)
+    if (proc->state == IDL_SCAN_SCOPED_NAME)
       return IDL_TOKEN_SCOPE_L;
     else
       return IDL_TOKEN_SCOPE;
@@ -460,52 +460,49 @@ idl_lex(idl_processor_t *proc, idl_lexeme_t *lex)
     } else if ((cnt = have_space(proc, cur)) > 0) {
       /* skip space characters, except newline */
       lim = cur + cnt;
-    } else {
-      /* scan (subset of) preprocessor grammar */
-      if (proc->state & IDL_SCAN_DIRECTIVE) {
-        /*
-         * preprocessor
-         */
-        if (chr == '.' && have_digit(proc, next(proc, cur))) {
-          code = scan_pp_number(proc, cur, &lim);
-        } else if ((cnt = have_alpha(proc, cur)) || chr == '_') {
-          code = scan_identifier(proc, cur, &lim);
-        } else if ((cnt = have_digit(proc, cur))) {
-          code = scan_pp_number(proc, cur, &lim);
-        } else {
-          lim = cur + 1;
-          code = (unsigned char)*cur;
-        }
-      } else if (proc->state & IDL_SCAN_CODE) {
-        /*
-         * interface definition language
-         */
-        if (have_digit(proc, cur)) {
-          /* stroll takes care of decimal vs. octal vs. hexadecimal */
-          code = scan_integer_literal(proc, cur, &lim);
-        } else if (have_alpha(proc, cur) || chr == '_') {
-          code = scan_identifier(proc, cur, &lim);
-        } else if ((cnt = have(proc, cur, "::")) > 0) {
-          code = scan_scope(proc, cur, &lim);
-        } else if (chr == '@') {
-          if ((cnt = have(proc, next(proc, cur), "::")) ||
-              (cnt = have(proc, next(proc, cur), "_")) ||
-              (cnt = have_alpha(proc, next(proc, cur))))
-            code = cnt < 0 ? IDL_NEED_REFILL : IDL_TOKEN_AT;
-          else
-            code = (unsigned char)*cur;
-          lim = cur + 1;
-        } else {
-          lim = cur + 1;
-          code = (unsigned char)*cur;
-        }
-      } else if (chr == '#') {
-        proc->state |= IDL_SCAN_DIRECTIVE;
+    } else if ((int)proc->state & (int)IDL_SCAN_DIRECTIVE) {
+      /*
+       * preprocessor
+       */
+      if (chr == '.' && have_digit(proc, next(proc, cur))) {
+        code = scan_pp_number(proc, cur, &lim);
+      } else if ((cnt = have_alpha(proc, cur)) || chr == '_') {
+        code = scan_identifier(proc, cur, &lim);
+      } else if ((cnt = have_digit(proc, cur))) {
+        code = scan_pp_number(proc, cur, &lim);
+      } else {
         lim = cur + 1;
         code = (unsigned char)*cur;
-      } else {
-        proc->state |= IDL_SCAN_CODE;
       }
+    } else if ((int)proc->state & (int)IDL_SCAN_CODE) {
+      /*
+       * interface definition language
+       */
+      if (have_digit(proc, cur)) {
+        /* stroll takes care of decimal vs. octal vs. hexadecimal */
+        code = scan_integer_literal(proc, cur, &lim);
+      } else if (have_alpha(proc, cur) || chr == '_') {
+        code = scan_identifier(proc, cur, &lim);
+      } else if ((cnt = have(proc, cur, "::")) > 0) {
+        code = scan_scope(proc, cur, &lim);
+      } else if (chr == '@') {
+        if ((cnt = have(proc, next(proc, cur), "::")) ||
+            (cnt = have(proc, next(proc, cur), "_")) ||
+            (cnt = have_alpha(proc, next(proc, cur))))
+          code = cnt < 0 ? IDL_NEED_REFILL : IDL_TOKEN_AT;
+        else
+          code = (unsigned char)*cur;
+        lim = cur + 1;
+      } else {
+        lim = cur + 1;
+        code = (unsigned char)*cur;
+      }
+    } else if (chr == '#') {
+      proc->state = IDL_SCAN_DIRECTIVE;
+      lim = cur + 1;
+      code = (unsigned char)*cur;
+    } else {
+      proc->state = IDL_SCAN_CODE;
     }
   } while (code == '\0');
 
@@ -513,8 +510,8 @@ idl_lex(idl_processor_t *proc, idl_lexeme_t *lex)
   lex->limit = lim;
   lex->location.last = proc->scanner.position;
 
-  if (code != IDL_TOKEN_IDENTIFIER)
-    proc->state &= ~IDL_SCAN_SCOPED_NAME;
+  if (proc->state == IDL_SCAN_SCOPED_NAME && code != IDL_TOKEN_IDENTIFIER)
+    proc->state = IDL_SCAN_CODE;
 
   return code;
 }

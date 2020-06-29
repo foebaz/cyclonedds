@@ -82,7 +82,7 @@ struct idl_scanner {
 /** @private */
 typedef struct idl_directive idl_directive_t;
 struct idl_directive {
-  enum { idl_line, idl_keylist } type;
+  enum { IDL_LINE, IDL_KEYLIST } type;
 };
 
 /** @private */
@@ -91,6 +91,7 @@ struct idl_line {
   idl_directive_t directive;
   uint32_t line;
   char *file;
+  bool extra_tokens;
 };
 
 /** @private */
@@ -116,21 +117,7 @@ struct idl_parser {
 #define IDL_FLAG_DEBUG (1u<<1)
 /** Preprocess */
 #define IDL_PREPROCESS (1u<<0)
-/** @} */
 
-/**
- * @name processor_state
- * @private
- * @{
- */
-/* first 8 bits reserved for directive parser */
-/** Scanning a processor directive */
-#define IDL_SCAN_DIRECTIVE (1u<<8)
-/** Scanning IDL */
-#define IDL_SCAN_CODE (1u<<9)
-/** Scanning scoped name in IDL (complements IDL_SCAN_CODE) */
-#define IDL_SCAN_SCOPED_NAME (1u<<10)
-/** */
 #define IDL_WRITE (1u<<11)
 /** @} */
 
@@ -138,7 +125,29 @@ struct idl_parser {
 typedef struct idl_processor idl_processor_t;
 struct idl_processor {
   uint32_t flags; /**< processor options */
-  uint32_t state; /**< processor state */
+  enum {
+    IDL_SCAN,
+    /** scanning preprocessor directive */
+    IDL_SCAN_DIRECTIVE = (1<<7),
+    IDL_SCAN_DIRECTIVE_NAME,
+    /** scanning #line directive */
+    IDL_SCAN_LINE = (IDL_SCAN_DIRECTIVE | 1<<6),
+    IDL_SCAN_FILENAME,
+    IDL_SCAN_EXTRA_TOKEN,
+    /** scanning #pragma directive */
+    IDL_SCAN_PRAGMA = (IDL_SCAN_DIRECTIVE | 1<<5),
+    IDL_SCAN_UNKNOWN_PRAGMA,
+    /** scanning #pragma keylist directive */
+    IDL_SCAN_KEYLIST = (IDL_SCAN_PRAGMA | 1<<4),
+    IDL_SCAN_DATA_TYPE,
+    IDL_SCAN_KEY,
+    /** scanning IDL code */
+    IDL_SCAN_CODE = (1<<9),
+    /** scanning a scoped name in IDL code */
+    IDL_SCAN_SCOPED_NAME = (IDL_SCAN_CODE | (1<<8)),
+    /** end of input */
+    IDL_EOF = (1<<10)
+  } state; /**< processor state */
   idl_file_t *files; /**< list of encountered files */
   idl_directive_t *directive; /**< */
   idl_buffer_t buffer; /**< dynamically sized input buffer */

@@ -171,7 +171,7 @@ int32_t idl_parse(idl_processor_t *proc)
   do {
     if ((code = idl_scan(proc, &tok)) < 0)
       break;
-    if (proc->state & IDL_SCAN_DIRECTIVE)
+    if ((int)proc->state & (int)IDL_SCAN_DIRECTIVE)
       code = idl_parse_directive(proc, &tok);
     else if (code != '\n')
       code = idl_parse_code(proc, &tok);
@@ -180,7 +180,7 @@ int32_t idl_parse(idl_processor_t *proc)
     /* free memory associated with token value */
     switch (tok.code) {
       case '\n':
-        proc->state &= ~(IDL_SCAN_CODE | IDL_SCAN_DIRECTIVE);
+        proc->state = IDL_SCAN;
         break;
       case IDL_TOKEN_IDENTIFIER:
       case IDL_TOKEN_CHAR_LITERAL:

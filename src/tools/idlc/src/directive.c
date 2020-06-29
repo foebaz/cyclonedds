@@ -10,6 +10,7 @@
  * SPDX-License-Identifier: EPL-2.0 OR BSD-3-Clause
  */
 #include <assert.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -20,18 +21,6 @@
 
 #include "dds/ddsrt/heap.h"
 #include "dds/ddsrt/strtol.h"
-
-/* 8 bits reserved for directive parsing state.
-   4 highest bits are for global state.
-   4 lowest bits are for local state (enums). */
-#define INITIAL (IDL_SCAN_DIRECTIVE | 0)
-#define DISCARD (IDL_SCAN_DIRECTIVE | 1)
-#define DIRECTIVE (IDL_SCAN_DIRECTIVE | (1<<4))
-#define LINE (DIRECTIVE | (1<<5))
-#define PRAGMA (DIRECTIVE |(1<<6))
-#define KEYLIST (PRAGMA | (1<<7))
-
-#define STATEMASK (IDL_SCAN_DIRECTIVE | (IDL_SCAN_DIRECTIVE - 1))
 
 static int32_t
 push_line(idl_processor_t *proc, idl_line_t *dir)
@@ -66,11 +55,9 @@ static int32_t
 parse_line(idl_processor_t *proc, idl_token_t *tok)
 {
   idl_line_t *dir = (idl_line_t *)proc->directive;
-  enum { line_number = LINE, filename, extra_tokens, newline } state;
 
-  state = proc->state & STATEMASK;
-  switch (state) {
-    case line_number: {
+  switch (proc->state) {
+    case IDL_SCAN_LINE: {
       char *end;
       unsigned long long ullng;
 
@@ -82,7 +69,7 @@ parse_line(idl_processor_t *proc, idl_token_t *tok)
         return IDL_PARSE_ERROR;
       }
       ddsrt_strtoull(tok->value.str, &end, 10, &ullng);
-      if (end == tok->value.str || *end != '\0') {
+      if (end == tok->value.str || *end != '\0' || ullng > INT32_MAX) {
         idl_error(proc, &tok->location,
           "invalid line number in #line directive");
         return IDL_PARSE_ERROR;
@@ -90,15 +77,16 @@ parse_line(idl_processor_t *proc, idl_token_t *tok)
       if (!(dir = ddsrt_malloc(sizeof(*dir)))) {
         return IDL_MEMORY_EXHAUSTED;
       }
-      dir->directive.type = idl_line;
+      dir->directive.type = IDL_LINE;
       dir->line = (uint32_t)ullng;
       dir->file = NULL;
+      dir->extra_tokens = false;
       proc->directive = (idl_directive_t *)dir;
-      proc->state++;
+      proc->state = IDL_SCAN_FILENAME;
     } break;
-    case filename:
+    case IDL_SCAN_FILENAME:
       assert(dir);
-      proc->state++;
+      proc->state = IDL_SCAN_EXTRA_TOKEN;
       if (tok->code != '\n' && tok->code != 0) {
         if (tok->code != IDL_TOKEN_STRING_LITERAL) {
           idl_error(proc, &tok->location,
@@ -109,22 +97,21 @@ parse_line(idl_processor_t *proc, idl_token_t *tok)
         dir->file = tok->value.str;
         /* do not free string on return */
         tok->value.str = NULL;
-        return 0;
+        break;
       }
       /* fall through */
-    case extra_tokens:
-      if (tok->code != '\n' && tok->code != '\0') {
+    case IDL_SCAN_EXTRA_TOKEN:
+      assert(dir);
+      if (tok->code == '\n' || tok->code == 0) {
+        proc->state = IDL_SCAN;
+        return push_line(proc, dir);
+      } else if (!dir->extra_tokens) {
         idl_warning(proc, &tok->location,
           "extra tokens at end of #line directive");
       }
-      proc->state++;
-      /* fall through */
-    case newline:
-      assert(dir);
-      if (tok->code == '\n' || tok->code == 0) {
-        proc->state &= ~STATEMASK;
-        return push_line(proc, dir);
-      }
+      break;
+    default:
+      assert(0);
       break;
   }
   return 0;
@@ -152,7 +139,7 @@ push_keylist(idl_processor_t *proc, idl_keylist_t *dir)
     case DDS_RETCODE_OK:
       break;
     default:
-      return  IDL_PARSE_ERROR;
+      return IDL_PARSE_ERROR;
   }
   return 0;
 }
@@ -161,13 +148,11 @@ static int32_t
 parse_keylist(idl_processor_t *proc, idl_token_t *tok)
 {
   idl_keylist_t *dir = (idl_keylist_t *)proc->directive;
-  enum { identifier = KEYLIST, first_key, key } state;
 
   /* #pragma keylist does not support scoped names */
 
-  state = proc->state & STATEMASK;
-  switch (state) {
-    case identifier:
+  switch (proc->state) {
+    case IDL_SCAN_KEYLIST:
       if (tok->code == '\n' || tok->code == '\0') {
         idl_error(proc, &tok->location,
           "no data-type in #pragma keylist directive");
@@ -180,26 +165,23 @@ parse_keylist(idl_processor_t *proc, idl_token_t *tok)
       assert(!dir);
       if (!(dir = ddsrt_malloc(sizeof(*dir))))
         return IDL_MEMORY_EXHAUSTED;
-      dir->directive.type = idl_keylist;
+      dir->directive.type = IDL_KEYLIST;
       dir->data_type = tok->value.str;
       dir->keys = NULL;
       proc->directive = (idl_directive_t *)dir;
       /* do not free identifier on return */
       tok->value.str = NULL;
-      proc->state &= ~STATEMASK;
-      proc->state |= first_key;
+      proc->state = IDL_SCAN_KEY;
       break;
-    case first_key:
-    case key: {
+    case IDL_SCAN_DATA_TYPE:
+    case IDL_SCAN_KEY: {
       char **keys = dir->keys;
       size_t cnt = 0;
 
-      for (; keys && *keys; keys++, cnt++) /* count keys */ ;
-
       if (tok->code == '\n' || tok->code == '\0') {
-        proc->state &= ~STATEMASK;
+        proc->state = IDL_SCAN;
         return push_keylist(proc, dir);
-      } else if (tok->code == ',' && state == key) {
+      } else if (tok->code == ',' && keys) {
         /* #pragma keylist takes space or comma separated list of keys */
         break;
       } else if (tok->code != IDL_TOKEN_IDENTIFIER) {
@@ -210,65 +192,67 @@ parse_keylist(idl_processor_t *proc, idl_token_t *tok)
         idl_error(proc, &tok->location,
           "invalid key %s in #pragma keylist directive", tok->value.str);
         return IDL_PARSE_ERROR;
-      } else if (!(keys = ddsrt_realloc(dir->keys, sizeof(*keys) * (cnt + 2)))) {
-        return IDL_MEMORY_EXHAUSTED;
       }
+
+      for (; keys && *keys; keys++, cnt++) /* count keys */ ;
+
+      if (!(keys = ddsrt_realloc(dir->keys, sizeof(*keys) * (cnt + 2))))
+        return IDL_MEMORY_EXHAUSTED;
 
       keys[cnt++] = tok->value.str;
       keys[cnt  ] = NULL;
       dir->keys = keys;
       /* do not free identifier on return */
       tok->value.str = NULL;
-      proc->state &= ~STATEMASK;
-      proc->state |= key;
     } break;
+    default:
+      assert(0);
+      break;
   }
   return 0;
 }
 
 int32_t idl_parse_directive(idl_processor_t *proc, idl_token_t *tok)
 {
-  unsigned int state = proc->state & STATEMASK;
-
-  if ((state & LINE) == LINE) {
+  /* order is important here */
+  if ((proc->state & IDL_SCAN_LINE) == IDL_SCAN_LINE) {
     return parse_line(proc, tok);
-  } else if ((state & KEYLIST) == KEYLIST) {
+  } else if ((proc->state & IDL_SCAN_KEYLIST) == IDL_SCAN_KEYLIST) {
     return parse_keylist(proc, tok);
-  } else if ((state & PRAGMA) == PRAGMA) {
+  } else if (proc->state == IDL_SCAN_PRAGMA) {
     /* expect keylist */
-    if (tok->code != IDL_TOKEN_IDENTIFIER) {
-      idl_error(proc, &tok->location, "invalid compiler directive");
-      return IDL_PARSE_ERROR;
-    } else if (strcmp(tok->value.str, "keylist") == 0) {
-      proc->state |= KEYLIST;
-    } else {
+    if (tok->code == IDL_TOKEN_IDENTIFIER) {
+      if (strcmp(tok->value.str, "keylist") == 0) {
+        proc->state = IDL_SCAN_KEYLIST;
+        return 0;
+      }
       idl_error(proc, &tok->location,
         "unsupported #pragma directive %s", tok->value.str);
       return IDL_PARSE_ERROR;
     }
-  } else if ((state & DIRECTIVE) == DIRECTIVE) {
-    /* expect line or pragma */
-    if (tok->code != IDL_TOKEN_IDENTIFIER) {
-      idl_error(proc, &tok->location, "invalid compiler directive");
-      return IDL_PARSE_ERROR;
-    } else if (strcmp(tok->value.str, "line") == 0) {
-      proc->state |= LINE;
-    } else if (strcmp(tok->value.str, "pragma") == 0) {
-      /* support #pragma keylist for backwards compatibility */
-      proc->state |= PRAGMA;
-    } else {
-      idl_error(proc, &tok->location,
-        "invalid compiler directive %s", tok->value.str);
-      return IDL_PARSE_ERROR;
+  } else if (proc->state == IDL_SCAN_DIRECTIVE_NAME) {
+    if (tok->code == IDL_TOKEN_IDENTIFIER) {
+      /* expect line or pragma */
+      if (strcmp(tok->value.str, "line") == 0) {
+        proc->state = IDL_SCAN_LINE;
+        return 0;
+      } else if (strcmp(tok->value.str, "pragma") == 0) {
+        /* support #pragma keylist for backwards compatibility */
+        proc->state = IDL_SCAN_PRAGMA;
+        return 0;
+      }
+    } else if (tok->code == '\n' || tok->code == '\0') {
+      proc->state = IDL_SCAN;
+      return 0;
     }
-  } else if (state == INITIAL) {
-    /* expect # or //@ */
+  } else if (proc->state == IDL_SCAN_DIRECTIVE) {
+    /* expect # */
     if (tok->code == '#') {
-      proc->state |= DIRECTIVE;
-    } else {
-      idl_error(proc, &tok->location, "invalid compiler directive");
-      return IDL_PARSE_ERROR;
+      proc->state = IDL_SCAN_DIRECTIVE_NAME;
+      return 0;
     }
   }
-  return 0;
+
+  idl_error(proc, &tok->location, "invalid compiler directive");
+  return IDL_PARSE_ERROR;
 }

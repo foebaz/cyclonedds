@@ -68,8 +68,8 @@ idl_log(
   idl_processor_t *proc, uint32_t prio, idl_location_t *loc, const char *fmt, va_list ap)
 {
   char buf[1024];
+  int cnt;
   size_t off;
-  ssize_t cnt;
 
   (void)proc;
   (void)prio;

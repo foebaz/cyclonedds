@@ -219,7 +219,7 @@ int32_t idlc_parse(ddsts_type_t **typeptr)
   }
 
   if (opts.flags & IDLC_PREPROCESS) {
-    proc.state |= IDL_WRITE;
+    proc.flags |= IDL_WRITE;
     mcpp_set_out_func(&idlc_putc, &idlc_puts, &idlc_printf);
     if (mcpp_lib_main(opts.argc, opts.argv) == 0) {
       assert(!(opts.flags & IDLC_COMPILE) || retcode == 0);
@@ -227,7 +227,7 @@ int32_t idlc_parse(ddsts_type_t **typeptr)
       assert(retcode != 0);
       ret = retcode;
     }
-    proc.state &= ~IDL_WRITE;
+    proc.flags &= ~IDL_WRITE;
   } else {
     FILE *fin;
     char buf[1024];

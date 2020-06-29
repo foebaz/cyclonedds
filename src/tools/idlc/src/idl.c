@@ -74,10 +74,10 @@ idl_log(
   (void)prio;
   if (loc->first.file)
     cnt = snprintf(
-      buf, sizeof(buf), "%s:%u:%u: ", loc->first.file, loc->first.line, loc->first.column);
+      buf, sizeof(buf)-1, "%s:%u:%u: ", loc->first.file, loc->first.line, loc->first.column);
   else
     cnt = snprintf(
-      buf, sizeof(buf), "%u:%u: ", loc->first.line, loc->first.column);
+      buf, sizeof(buf)-1, "%u:%u: ", loc->first.line, loc->first.column);
 
   if (cnt == -1)
     return;

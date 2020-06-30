@@ -18,7 +18,7 @@
 #include "dds/ddsrt/string.h"
 #include "dds/ddsrt/misc.h"
 #include "dds/ddsrt/log.h"
-#include "typetree.h"
+#include "dds/ddsts/typetree.h"
 #include "tt_create.h"
 
 typedef struct array_size array_size_t;

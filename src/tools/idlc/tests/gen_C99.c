@@ -14,7 +14,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include "CUnit/Test.h"
-#include "typetree.h"
+#include "dds/ddsts/typetree.h"
 #include "idl.h"
 #include "gen_c99.h"
 

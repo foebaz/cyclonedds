@@ -14,7 +14,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include "CUnit/Test.h"
-#include "typetree.h"
+#include "dds/ddsts/typetree.h"
 #include "idl.h"
 
 static bool test_type(ddsts_type_t *type, ddsts_flags_t flags, const char *name, ddsts_type_t *parent, bool next_is_null)

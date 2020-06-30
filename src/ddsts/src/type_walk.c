@@ -13,8 +13,8 @@
 #include <stdbool.h>
 #include <string.h>
 
-#include "typetree.h"
-#include "type_walk.h"
+#include "dds/ddsts/typetree.h"
+#include "dds/ddsts/type_walk.h"
 
 dds_return_t ddsts_walk(ddsts_call_path_t *path, ddsts_flags_t visit, ddsts_flags_t call, ddsts_walk_call_func_t func, void *context)
 {

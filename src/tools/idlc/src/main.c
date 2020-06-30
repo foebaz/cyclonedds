@@ -24,9 +24,9 @@
 #include "dds/ddsrt/io.h"
 #include "dds/ddsrt/string.h"
 #include "dds/ddsrt/misc.h"
+#include "dds/ddsts/typetree.h"
 
 #include "idl.h"
-#include "typetree.h"
 #include "mcpp_lib.h"
 #include "mcpp_out.h"
 #include "gen_c99.h"

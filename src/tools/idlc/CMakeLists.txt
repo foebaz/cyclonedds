@@ -24,14 +24,12 @@ add_library(idlc-lib STATIC
   src/gen_ostream.c
   src/scanner.c
   src/directive.c
-  src/typetree.c
-  src/type_walk.c
   ${BISON_parser_OUTPUTS})
 
 target_include_directories(idlc-lib PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_include_directories(idlc-lib PUBLIC "${CMAKE_CURRENT_BINARY_DIR}")
 
-target_link_libraries(idlc-lib PUBLIC ddsc)
+target_link_libraries(idlc-lib PUBLIC ddsts)
 
 add_executable(idlc "src/main.c")
 target_link_libraries(idlc PRIVATE idlc-lib idlpp)

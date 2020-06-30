@@ -19,7 +19,6 @@
 
 #include "idl.h"
 #include "parser.h"
-#include "typetree.h"
 #include "tt_create.h"
 
 #include "dds/ddsrt/heap.h"

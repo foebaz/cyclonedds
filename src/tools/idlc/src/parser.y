@@ -18,7 +18,7 @@
 #include "dds/ddsrt/heap.h"
 #include "dds/ddsrt/misc.h"
 #include "dds/ddsrt/string.h"
-#include "typetree.h"
+#include "dds/ddsts/typetree.h"
 
 #include "idl.h"
 #include "tt_create.h"

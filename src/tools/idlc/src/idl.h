@@ -17,7 +17,7 @@
 #include "dds/ddsrt/attributes.h"
 #include "dds/ddsrt/retcode.h"
 
-#include "typetree.h"
+#include "dds/ddsts/typetree.h"
 #include "tt_create.h"
 
 /** @private */

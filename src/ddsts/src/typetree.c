@@ -1,5 +1,5 @@
 /*
- * Copyright(c) 2006 to 2019 ADLINK Technology Limited and others
+ * Copyright(c) 2006 to 2020 ADLINK Technology Limited and others
  *
  * This program and the accompanying materials are made available under the
  * terms of the Eclipse Public License v. 2.0 which is available at
@@ -14,7 +14,7 @@
 #include <assert.h>
 #include "dds/ddsrt/retcode.h"
 #include "dds/ddsrt/heap.h"
-#include "typetree.h"
+#include "dds/ddsts/typetree.h"
 
 
 void ddsts_free_literal(ddsts_literal_t *literal)

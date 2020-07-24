@@ -20,6 +20,7 @@
 #include "idl/processor.h"
 #include "idl/parser.h" /* Bison tokens */
 #include "scanner.h"
+#include "idl/string.h"
 
 /* treat every cr+lf, lf+cr, cr, lf sequence as a single newline */
 static int32_t

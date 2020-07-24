@@ -30,6 +30,10 @@ typedef int32_t idl_retcode_t;
 #define IDL_RETCODE_PARSE_ERROR IDL_RETCODE_SCAN_ERROR
 /** Operation failed due to lack of resources */
 #define IDL_RETCODE_NO_MEMORY (-5)
+#define IDL_RETCODE_INVALID_PARSETREE (-6)
+#define IDL_RETCODE_CANNOT_OPEN_FILE (-7)
+#define IDL_RETCODE_PRECONDITION_NOT_MET (-8)
+#define IDL_RETCODE_BREAK_OUT (-9)
 /** @} */
 
 #endif /* IDL_RETCODE_H */

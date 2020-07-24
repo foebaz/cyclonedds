@@ -29,6 +29,8 @@ add_library(
     src/tree.c
     src/table.c
     src/string.c
+    src/backend.c
+    src/backendCpp11.c
     ${BISON_parser_OUTPUT_SOURCE})
 
 generate_export_header(idl EXPORT_FILE_NAME include/idl/export.h)

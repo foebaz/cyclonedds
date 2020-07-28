@@ -19,8 +19,8 @@
 #include "idl/processor.h"
 
 static const char* struct_write_func_fmt = "size_t write_struct(const %s &write, void *data, size_t position)";
-static const char* primitive_calc_alignment_fmt = "(%d - position%%%d)%%%d;";
-static const char* primitive_calc_alignment_even_odd = "position%2;";
+static const char* primitive_calc_alignment_modulo_fmt = "(%d - position%%%d)%%%d;";
+static const char* primitive_calc_alignment_shift_fmt = "position&%d;";
 static const char* primitive_incr_alignment_fmt = "  position += alignmentbytes;";
 static const char* primitive_write_func_padding_fmt = "  memset(data+position,0x0,%d);  //setting padding bytes to 0x0\n";
 static const char* primitive_write_func_alignment_fmt = "  memset(data+position,0x0,alignmentbytes);  //setting alignment bytes to 0x0\n";
@@ -33,8 +33,6 @@ static const char* primitive_incr_pos = "  position += %d;";
 static const char* instance_size_func_calc_fmt = "  position += write_size(write.%s(), position);\n";
 
 static const char* struct_read_func_fmt = "size_t read_struct(%s &read, void *data, size_t position)";
-static const char* struct_read_size_func_fmt = "size_t %s_read_size(void *data, size_t offset)";
-static const char* struct_read_size_func_call_fmt = "  position += %s_read_size(data, position);\n";
 static const char* primitive_read_func_read_fmt = "  memcpy(&read.%s() data+position,%d);";
 static const char* instance_read_func_fmt = "  position = read_struct(write.%s(), data, position);\n";
 
@@ -46,7 +44,6 @@ struct context
   ostream_t* header_stream;
   ostream_t* write_size_stream;
   ostream_t* write_stream;
-  ostream_t* read_size_stream;
   ostream_t* read_stream;
   size_t depth;
   int currentalignment;
@@ -64,6 +61,11 @@ struct ostream {
 #define strcpy_s(ptr, len, str) strcpy(ptr, str)
 #define sprintf_s(ptr, len, str, ...) sprintf(ptr, str, __VA_ARGS__)
 #define strcat_s(ptr, len, str) strcat(ptr, str)
+/* //with added debug info
+#else
+#define strcpy_s(ptr, len, str) printf("strcpy_s: %d\n",__LINE__); strcpy_s(ptr, len, str)
+#define sprintf_s(ptr, len, str, ...) printf("sprintf_s: %d\n",__LINE__); sprintf_s(ptr, len, str, __VA_ARGS__)
+#define strcat_s(ptr, len, str) printf("strcat_s: %d\n",__LINE__); strcat_s(ptr, len, str)*/
 #endif
 
 
@@ -72,21 +74,28 @@ static char* generatealignment(char* oldstring, int alignto)
   char* returnval;
   if (alignto < 2)
   {
-    size_t len = strlen("0" + 1);
+    size_t len = strlen("0") + 1;
     returnval = realloc(oldstring, len);
     strcpy_s(returnval, len, "0");
   }
-  else if (alignto == 2)
-  {
-    size_t len = strlen(primitive_calc_alignment_even_odd) + 1;
-    returnval = realloc(oldstring, len);
-    strcpy_s(returnval, len, primitive_calc_alignment_even_odd);
-  }
   else
   {
-    size_t len = strlen(primitive_calc_alignment_fmt) - 10 + 5 + 1;
+    unsigned int mask = 0xFFFFFF;
+    while (mask != 0)
+    {
+      if (alignto == mask+1)
+      {
+        size_t len = strlen(primitive_calc_alignment_shift_fmt) - 2 + 10 + 1;
+        returnval = realloc(oldstring, len);
+        sprintf_s(returnval, len, primitive_calc_alignment_shift_fmt, mask);
+        return returnval;
+      }
+      mask >>= 1;
+    }
+
+    size_t len = strlen(primitive_calc_alignment_modulo_fmt) - 10 + 5 + 1;
     returnval = realloc(oldstring, len);
-    sprintf_s(returnval, len, primitive_calc_alignment_fmt, alignto, alignto, alignto);
+    sprintf_s(returnval, len, primitive_calc_alignment_modulo_fmt, alignto, alignto, alignto);
   }
   return returnval;
 }
@@ -121,7 +130,7 @@ streamer_t* create_streamer(const char* filename_prefix)
     return NULL;
   }
 
-  printf("files opened\n");
+  //printf("files opened\n");
 
   streamer_t* ptr = malloc(sizeof(streamer_t));
   if (NULL != ptr)
@@ -220,10 +229,9 @@ context_t* create_context(streamer_t* str, const char* ctx)
     ptr->header_stream = create_ostream(&ptr->depth);
     ptr->write_size_stream = create_ostream(&ptr->depth);
     ptr->write_stream = create_ostream(&ptr->depth);
-    ptr->read_size_stream = create_ostream(&ptr->depth);
     ptr->read_stream = create_ostream(&ptr->depth);
   }
-  printf("new context generated: %s\n", ctx);
+  //printf("new context generated: %s\n", ctx);
   return ptr;
 }
 
@@ -234,7 +242,6 @@ static void clear_context(context_t* ctx)
   clear_ostream(ctx->write_stream);
   clear_ostream(ctx->write_size_stream);
   clear_ostream(ctx->read_stream);
-  clear_ostream(ctx->read_size_stream);
 }
 #endif
 
@@ -244,7 +251,6 @@ static void flush_context(context_t* ctx)
   flush_ostream(ctx->write_stream, ctx->str->impl_file);
   flush_ostream(ctx->write_size_stream, ctx->str->impl_file);
   flush_ostream(ctx->read_stream, ctx->str->impl_file);
-  flush_ostream(ctx->read_size_stream, ctx->str->impl_file);
 }
 
 void close_context(context_t* ctx)
@@ -255,9 +261,8 @@ void close_context(context_t* ctx)
   destruct_ostream(ctx->header_stream);
   destruct_ostream(ctx->write_size_stream);
   destruct_ostream(ctx->write_stream);
-  destruct_ostream(ctx->read_size_stream);
   destruct_ostream(ctx->read_stream);
-  printf("context closed: %s\n", ctx->context);
+  //printf("context closed: %s\n", ctx->context);
   free(ctx->context);
 }
 
@@ -308,11 +313,6 @@ idl_retcode_t process_instance(context_t* ctx, idl_node_t* node)
   sprintf_s(buffer, bufsize, instance_read_func_fmt, cpp11name);
   append_ostream(ctx->read_stream, buffer, true);
 
-  bufsize = strlen(struct_read_size_func_call_fmt) - 2 + strlen(cpp11name) + 1;
-  buffer = realloc(buffer, bufsize);
-  sprintf_s(buffer, bufsize, struct_read_size_func_call_fmt, cpp11name);
-  append_ostream(ctx->read_size_stream, buffer, true);
-
   bufsize = strlen(instance_size_func_calc_fmt) - 2 + strlen(cpp11name) + 1;
   buffer = realloc(buffer, bufsize);
   sprintf_s(buffer, bufsize, instance_size_func_calc_fmt, cpp11name);
@@ -328,8 +328,9 @@ idl_retcode_t process_instance(context_t* ctx, idl_node_t* node)
 
 idl_retcode_t process_template(context_t* ctx, idl_node_t* node)
 {
-  idl_member_t *member = (idl_member_t *)node;
-  printf("processing template typed member named: %s::%s\n", ctx->context, member->declarators->identifier);
+  if (NULL == ctx || NULL == node)
+    return IDL_RETCODE_SCAN_ERROR;
+  //printf("processing template typed member named: %s::%s\n", ctx->context, node->type.member.declarator);
   return IDL_RETCODE_OK;
 }
 
@@ -356,7 +357,7 @@ idl_retcode_t process_module(context_t* ctx, idl_node_t* node)
     process_node(newctx, (idl_node_t *)module->definitions);
     newctx->depth--;
     append_ostream(newctx->header_stream, "}\n\n", true);
-    append_ostream(newctx->read_size_stream, "}\n\n", true);
+    append_ostream(newctx->read_stream, "}\n\n", true);
     close_context(newctx);
   }
 
@@ -397,16 +398,6 @@ idl_retcode_t process_constructed(context_t* ctx, idl_node_t* node)
     append_ostream(ctx->read_stream, "\n", false);
     append_ostream(ctx->read_stream, "{\n", true);
 
-    bufsize = strlen(cpp11name) + strlen(struct_read_size_func_fmt) - 2 + 1;
-    buffer = realloc(buffer, bufsize);
-    sprintf_s(buffer, bufsize, struct_read_size_func_fmt, cpp11name);
-    append_ostream(ctx->header_stream, buffer, true);
-    append_ostream(ctx->header_stream, ";\n\n", false);
-    append_ostream(ctx->read_size_stream, buffer, true);
-    append_ostream(ctx->read_size_stream, "\n", false);
-    append_ostream(ctx->read_size_stream, "{\n", true);
-    append_ostream(ctx->read_size_stream, "  size_t position = offset;\n", true);
-
     ctx->currentalignment = -1;
     ctx->alignmentpresent = 0;
     ctx->accumulatedalignment = 0;
@@ -420,8 +411,6 @@ idl_retcode_t process_constructed(context_t* ctx, idl_node_t* node)
     append_ostream(ctx->write_stream, "}\n\n", true);
     append_ostream(ctx->read_stream, "  return position;\n", true);
     append_ostream(ctx->read_stream, "}\n\n", true);
-    append_ostream(ctx->read_size_stream, "  return position-offset;\n", true);
-    append_ostream(ctx->read_size_stream, "}\n\n", true);
     flush_context(ctx);
     free(cpp11name);
   }
@@ -434,23 +423,19 @@ idl_retcode_t process_base(context_t* ctx, idl_node_t* node)
   char *cpp11name = get_cpp11_name(member->declarators->identifier);
   int bytewidth = 1;
   if (member->type_spec->kind & IDL_BASE_TYPE) {
-    if ((node->kind & IDL_INTEGER_TYPE) == IDL_INTEGER_TYPE)
+    idl_type_spec_t *type_spec = member->type_spec;
+    if ((type_spec->kind & IDL_INTEGER_TYPE) == IDL_INTEGER_TYPE)
     {
-      bytewidth = 0x1 << (((node->kind & 0xf) >> 1) - 1);
+      bytewidth = 0x1 << (((type_spec->kind & 0xf) >> 1) - 1);
       //printf("%s integer type of byte width %d\n", cpp11name, bytewidth);
     }
-    else if ((node->kind & IDL_FLOATING_PT_TYPE) == IDL_FLOATING_PT_TYPE)
+    else if ((type_spec->kind & IDL_FLOATING_PT_TYPE) == IDL_FLOATING_PT_TYPE)
     {
-      switch (node->kind & 0xf)
-      {
-      case 0x2:
+      if ((type_spec->kind & IDL_FLOAT) == IDL_FLOAT)
         bytewidth = 4;
-        break;
-      case 0x4:
-      case 0x6:
+      else if ((type_spec->kind & IDL_DOUBLE) == IDL_DOUBLE ||
+               (type_spec->kind & IDL_LDOUBLE) == IDL_LDOUBLE)
         bytewidth = 8;
-        break;
-      }
       //printf("%s float type of byte width %d\n", cpp11name, bytewidth);
     }
   }
@@ -496,12 +481,6 @@ idl_retcode_t process_base(context_t* ctx, idl_node_t* node)
       append_ostream(ctx->write_size_stream, cpp11name, false);
       append_ostream(ctx->write_size_stream, "\n", false);
 
-      append_ostream(ctx->read_size_stream, "  position += ", true);
-      append_ostream(ctx->read_size_stream, buffer, false);
-      append_ostream(ctx->read_size_stream, "  //alignment for: ", false);
-      append_ostream(ctx->read_size_stream, cpp11name, false);
-      append_ostream(ctx->read_size_stream, "\n", false);
-
       ctx->accumulatedalignment = 0;
       ctx->currentalignment = bytewidth;
     }
@@ -510,23 +489,18 @@ idl_retcode_t process_base(context_t* ctx, idl_node_t* node)
       int missingbytes = (bytewidth - (ctx->accumulatedalignment % bytewidth)) % bytewidth;
       if (0 != missingbytes)
       {
-        bufsize = strlen(primitive_write_func_padding_fmt) - 2;
+        bufsize = strlen(primitive_write_func_padding_fmt) - 2 + 1 + 1;
         buffer = realloc(buffer, bufsize);
         sprintf_s(buffer, bufsize, primitive_write_func_padding_fmt, missingbytes);
         append_ostream(ctx->write_stream, buffer, true);
 
-        bufsize = strlen(primitive_incr_pos);
+        bufsize = strlen(primitive_incr_pos) - 2 + 1 + 1;
         buffer = realloc(buffer, bufsize);
         sprintf_s(buffer, bufsize, primitive_incr_pos, missingbytes);
         append_ostream(ctx->write_size_stream, buffer, true);
         append_ostream(ctx->write_size_stream, "  //padding bytes for: ", false);
         append_ostream(ctx->write_size_stream, cpp11name, false);
         append_ostream(ctx->write_size_stream, "\n", false);
-
-        append_ostream(ctx->read_size_stream, buffer, true);
-        append_ostream(ctx->read_size_stream, "  //padding bytes for: ", false);
-        append_ostream(ctx->read_size_stream, cpp11name, false);
-        append_ostream(ctx->read_size_stream, "\n", false);
 
         append_ostream(ctx->read_stream, buffer, true);
         append_ostream(ctx->read_stream, "  //padding bytes for: ", false);
@@ -566,11 +540,6 @@ idl_retcode_t process_base(context_t* ctx, idl_node_t* node)
   append_ostream(ctx->write_size_stream, "  //bytes for member: ", false);
   append_ostream(ctx->write_size_stream, cpp11name, false);
   append_ostream(ctx->write_size_stream, "\n", false);
-
-  append_ostream(ctx->read_size_stream, buffer, true);
-  append_ostream(ctx->read_size_stream, "  //bytes for member: ", false);
-  append_ostream(ctx->read_size_stream, cpp11name, false);
-  append_ostream(ctx->read_size_stream, "\n", false);
 
   append_ostream(ctx->write_stream, buffer, true);
   append_ostream(ctx->write_stream, incr_comment, false);

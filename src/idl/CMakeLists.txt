@@ -31,6 +31,7 @@ add_library(
     src/string.c
     src/backend.c
     src/backendCpp11.c
+    src/streamer_generator.c
     ${BISON_parser_OUTPUT_SOURCE})
 
 generate_export_header(idl EXPORT_FILE_NAME include/idl/export.h)

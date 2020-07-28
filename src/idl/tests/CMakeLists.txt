@@ -11,5 +11,5 @@
 #
 include(CUnit)
 
-add_cunit_executable(cunit_idl scanner.c parser.c cpp11Backend.c)
+add_cunit_executable(cunit_idl scanner.c parser.c cpp11Backend.c streamer_generator.c)
 target_link_libraries(cunit_idl PRIVATE idl)

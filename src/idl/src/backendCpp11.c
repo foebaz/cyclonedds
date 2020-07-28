@@ -52,7 +52,7 @@ static const char *cpp11_keywords[] =
     "uint8_t", "uint16_t", "uint32_t", "uint64_t",
 };
 
-static char *
+char *
 get_cpp11_name(const char *name)
 {
   char *cpp11Name;

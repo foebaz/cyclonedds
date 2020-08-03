@@ -84,7 +84,6 @@ osx_xcode: &osx_xcode
     - eval "export PATH=\"${path}:/usr/local/opt/flex/bin:/usr/local/opt/bison/bin\""
     - eval "export LDFLAGS=\"-L/usr/local/opt/bison/lib\""
   install:
-    - brew link --force bison flex;
     - python3 -m pip install conan --upgrade --user
 
 windows_vs2017: &windows_vs2017

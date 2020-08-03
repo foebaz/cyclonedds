@@ -80,10 +80,10 @@ osx_xcode: &osx_xcode
     - eval "export CC=clang"
     - eval "export CXX=clang++"
     - eval "export COV_COMPTYPE=clang COV_PLATFORM=macOSX"
-    - eval "export PATH=\"${PATH}:$(python3 -m site --user-base)/bin\""
-    - eval "export PATH=\"${PATH}:/usr/local/opt/flex/bin:/usr/local/opt/bison/bin\""
+    - eval "export PATH=\"$(python3 -m site --user-base)/bin:${PATH}\""
+    - eval "export PATH=\"/usr/local/opt/flex/bin:/usr/local/opt/bison/bin:${PATH}\""
   install:
-    - brew link --force bison flex
+    #- brew link --force bison flex
     - python3 -m pip install conan --upgrade --user
 
 windows_vs2017: &windows_vs2017

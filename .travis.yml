@@ -82,7 +82,6 @@ osx_xcode: &osx_xcode
     - eval "export COV_COMPTYPE=clang COV_PLATFORM=macOSX"
     - eval "export PATH=\"${PATH}:$(python3 -m site --user-base)/bin\""
     - eval "export PATH=\"${PATH}:/usr/local/opt/flex/bin:/usr/local/opt/bison/bin\""
-    - eval "export LDFLAGS=\"-L/usr/local/opt/bison/lib\""
   install:
     - python3 -m pip install conan --upgrade --user
 

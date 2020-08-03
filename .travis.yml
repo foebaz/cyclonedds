@@ -75,7 +75,7 @@ osx_xcode: &osx_xcode
   compiler: clang
   addons:
     homebrew:
-      packages: [ python3 bison flex ]
+      packages: [ python3, bison, flex ]
   before_install:
     - eval "export CC=clang"
     - eval "export CXX=clang++"
@@ -83,7 +83,7 @@ osx_xcode: &osx_xcode
     - eval "export PATH=\"${PATH}:$(python3 -m site --user-base)/bin\""
     - eval "export PATH=\"${PATH}:/usr/local/opt/flex/bin:/usr/local/opt/bison/bin\""
   install:
-    - brew link --force bison flex
+    #    - brew link --force bison flex
     - python3 -m pip install conan --upgrade --user
 
 windows_vs2017: &windows_vs2017

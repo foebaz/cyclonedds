@@ -53,11 +53,15 @@ struct idl_location {
    reserved for categories and properties that generators are likely to filter
    on when applying a visitor pattern. */
 
+/** Member is (part of) the key */
+#define IDL_KEY (1lu<<35)                         /* IDL_PRAGMA / IDL_MEMBER */
+/** Identifier has been assigned (and set) using either @id or, if DDS-XTypes
+    has been enabled, using @hashid. */
+#define IDL_ID (1lu<<34)                                       /* IDL_MEMBER */
 /* pragmas */
 #define IDL_PRAGMA (1lu<<33)
 #define   IDL_KEYLIST (IDL_PRAGMA | 1lu)
 #define   IDL_DATA_TYPE (IDL_PRAGMA | 2lu)
-#define   IDL_KEY (IDL_PRAGMA | 3lu)
 /* expressions */
 #define IDL_EXPR (1lu<<32)
 #define IDL_BINARY_EXPR (1lu<<31)                               /* IDL_EXPR */
@@ -204,8 +208,8 @@ struct idl_literal {
    constant declarations, case labels, etc. language native types are used if
    the resulting constant value is required to be of a specific base type,
    e.g. bounds in sequences. */
-typedef struct idl_variant idl_variant_t;
-struct idl_variant {
+typedef struct idl_constval idl_constval_t;
+struct idl_constval {
   idl_node_t node;
   union {
     uint8_t oct;
@@ -298,25 +302,38 @@ struct idl_declarator {
 /* #pragma keylist directives and @key annotations can be mixed if the
    key members and ordering match. both are converted to populate the key
    member in the second pass */
+// >> nah, probably better to use #pragma keylist for IDL 3.5
+//    and required @key for everything newer
+
 typedef struct idl_member idl_member_t;
 struct idl_member {
   idl_node_t node;
   idl_type_spec_t *type_spec;
   idl_declarator_t *declarators;
-  uint32_t id; /* FIXME: for @id?, paired with flag? */
+  uint32_t id;
+  uint32_t key; /**< 1-based */
+  //bool have_id; /**< Whether id has been assigned */
+  //uint32_t id; /* FIXME: for @id?, paired with flag? */
   /** non-zero if member is a key, zero otherwise. value dictates order */
-  uint32_t key;
+  // if IDL 4 is used (default) then it can only be 1 or 0 and the order
+  // is indicated by the id
+  // >> IDL 3.5 mode we support #pragma keylist and the user can the key order
+  //bool have_key;
+  //uint32_t key;
 };
 
 /**
  * Complements @id annotation and is applicable to any set containing elements
  * to which allocating a 32-bit integer identifier makes sense. It instructs
  * to automatically allocate identifiers to the elements.
+ *  // >> can only be applied to a set
  */
 typedef enum idl_autoid idl_autoid_t;
 enum idl_autoid {
-  IDL_AUTOID_HASH, /**< Identifier computed by a hashing algorithm */
-  IDL_AUTOID_SEQUENTIAL /**< Identifier computed by incrementing previous */
+  /** Identifier computed by a hashing algorithm. */
+  IDL_AUTOID_HASH,
+  /** Identifier computed by incrementing previous. */
+  IDL_AUTOID_SEQUENTIAL // << this is the default!
 };
 
 typedef enum idl_extensibility idl_extensibility_t;
@@ -332,7 +349,7 @@ enum idl_extensibility {
 typedef struct idl_struct idl_struct_t;
 struct idl_struct {
   idl_node_t node;
-  idl_struct_t *base_type;
+  idl_struct_t *base_type; /**< Base type extended by struct (optional) */
   char *identifier;
   idl_member_t *members;
   idl_keylist_t *keylist;
@@ -404,6 +421,13 @@ IDL_EXPORT bool idl_is_enumerator(const void *node);
 IDL_EXPORT bool idl_is_type_spec(const void *node, idl_mask_t mask);
 IDL_EXPORT bool idl_is_typedef(const void *node);
 IDL_EXPORT bool idl_is_forward(const void *node);
+
+/**
+ * @brief Retrieve scope that node introduced
+ * @param  [in]  node  Node
+ * @returns Scope that node introduces or in which it resides
+ */
+// IDL_EXPORT const idl_scope_t *idl_scope(const void *node);
 
 IDL_EXPORT bool idl_is_masked(const void *node, idl_mask_t mask);
 IDL_EXPORT const char *idl_identifier(const void *node);

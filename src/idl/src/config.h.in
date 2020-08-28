@@ -22,3 +22,5 @@
 #cmakedefine01 HAVE__STRTOLD_L
 
 #cmakedefine01 _GNU_SOURCE
+
+#cmakedefine01 BIGENDIAN

@@ -16,6 +16,7 @@ include(GenerateExportHeader)
 include(CheckIncludeFile)
 include(CheckSymbolExists)
 include(CheckCSourceCompiles)
+include(TestBigEndian)
 
 find_package(BISON REQUIRED)
 
@@ -34,9 +35,13 @@ add_library(
     src/string.c
     src/expression.c
     src/scope.c
+    src/hashid.c
+    src/annotation.c
     ${BISON_parser_OUTPUT_SOURCE})
 
 generate_export_header(idl EXPORT_FILE_NAME include/idl/export.h)
+
+test_big_endian(ARCH_IS_BIG_ENDIAN)
 
 # Locale-independent C runtime functions, like strtoull_l and strtold_l, are
 # available on modern operating systems albeit with some quirks.

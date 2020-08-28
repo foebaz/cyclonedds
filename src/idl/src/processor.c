@@ -163,9 +163,10 @@ idl_warning(
   va_end(ap);
 }
 
-static int32_t
+static idl_retcode_t
 idl_parse_code(idl_processor_t *proc, idl_token_t *tok, idl_node_t **nodeptr)
 {
+  idl_retcode_t ret;
   YYSTYPE yylval;
 
   /* prepare Bison yylval */
@@ -183,18 +184,20 @@ idl_parse_code(idl_processor_t *proc, idl_token_t *tok, idl_node_t **nodeptr)
       break;
   }
 
-  switch (idl_yypush_parse(
-    proc->parser.yypstate, tok->code, &yylval, &tok->location, proc, nodeptr))
+  switch ((ret = idl_yypush_parse(
+    proc->parser.yypstate, tok->code, &yylval, &tok->location, proc, nodeptr)))
   {
-    case (YYPUSH_MORE + 1):
-      return IDL_RETCODE_SEMANTIC_ERROR;
-    case YYPUSH_MORE:
-      return IDL_RETCODE_PUSH_MORE;
+    case 0:
+      break;
     case 1: /* parse error */
       return IDL_RETCODE_SYNTAX_ERROR;
     case 2: /* out of memory */
       return IDL_RETCODE_NO_MEMORY;
+    case YYPUSH_MORE:
+      return IDL_RETCODE_PUSH_MORE;
     default:
+      assert(ret < 0);
+      return ret;
       break;
   }
 

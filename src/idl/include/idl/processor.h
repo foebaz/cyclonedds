@@ -111,6 +111,11 @@ struct idl_pragma_keylist {
 // embedded manner, what's annotated? is it the member or the struct?
 //
 
+// >> requires IDL 4?
+// >> flag is at least there to enable @hashid
+//#define IDL_XTYPES (1u<<5)
+//
+
 /** @} */
 
 
@@ -151,6 +156,9 @@ struct idl_processor {
   idl_file_t *files; /**< list of encountered files */
   idl_directive_t *directive;
   idl_buffer_t buffer; /**< dynamically sized input buffer */
+  /* FIXME: Hack to support things like e.g. SEQUENCE and HASH for @autoid and
+            FINAL, APPENDABLE and MUTABLE for @extensibility. */
+  bool annotation_appl_params;
   void *locale;
   char *scope;
   struct {

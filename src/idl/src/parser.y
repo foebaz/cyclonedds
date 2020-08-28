@@ -32,7 +32,6 @@ _Pragma("GCC diagnostic ignored \"-Wsign-conversion\"")
 
 static void yyerror(idl_location_t *loc, idl_processor_t *proc, idl_node_t **, const char *);
 static void merge(void *parent, void *member, void *node);
-static void annotate(void *node, idl_annotation_appl_t *ann);
 static void locate(void *node, idl_position_t *floc, idl_position_t *lloc);
 static void push(void *list, void *node);
 static void *reference(void *node);
@@ -43,6 +42,31 @@ static void *reference(void *node);
       goto yyexhaustedlab; \
     locate(lval, floc, lloc); \
   } while (0)
+
+#define TRY_CATCH(action, catch) \
+  do { \
+    int _ret_; \
+    switch ((_ret_ = (action))) { \
+      case IDL_RETCODE_OK: \
+        break; \
+      case IDL_RETCODE_NO_MEMORY: \
+        yylen = 0; /* pop right-hand side tokens */ \
+        (void)(catch);\
+        goto yyexhaustedlab; \
+      case IDL_RETCODE_SYNTAX_ERROR: \
+        yylen = 0; /* pop right-hand side tokens */ \
+        (void)(catch); \
+        goto yyabortlab; \
+      default: \
+        yylen = 0; \
+        yyresult = _ret_; \
+        (void)(catch); \
+        goto yyreturn; \
+    } \
+  } while (0)
+
+#define TRY(action) \
+  TRY_CATCH((action), 0)
 
 %}
 
@@ -105,7 +129,7 @@ typedef struct idl_location YYLTYPE;
   idl_literal_t *literal;
   idl_binary_expr_t *binary_expr;
   idl_unary_expr_t *unary_expr;
-  idl_variant_t *variant;
+  idl_constval_t *constval;
   /* simple specifications */
   idl_mask_t kind;
   char *scoped_name;
@@ -157,7 +181,7 @@ typedef struct idl_location YYLTYPE;
              template_type_spec constr_type_dcl struct_dcl union_dcl enum_dcl
              constr_type switch_type_spec const_expr const_type primary_expr
              fixed_array_sizes fixed_array_size
-%type <variant> positive_int_const
+%type <constval> positive_int_const
 %type <binary_expr> or_expr xor_expr and_expr shift_expr add_expr mult_expr
 %type <unary_expr> unary_expr
 %type <kind> unary_operator base_type_spec floating_pt_type integer_type
@@ -170,7 +194,7 @@ typedef struct idl_location YYLTYPE;
 %type <sequence> sequence_type
 %type <string> string_type
 %type <module_dcl> module_dcl module_header
-%type <struct_dcl> struct_def struct_header
+%type <struct_dcl> struct_def struct_header struct_base_type struct_body
 %type <forward_dcl> struct_forward_dcl union_forward_dcl
 %type <member> members member
 %type <union_dcl> union_def
@@ -183,11 +207,13 @@ typedef struct idl_location YYLTYPE;
 %type <typedef_dcl> typedef_dcl
 %type <const_dcl> const_dcl
 %type <annotation_appl> annotation_appls annotation_appl
-%type <annotation_appl_param> annotation_appl_params annotation_appl_param
+%type <annotation_appl_param> annotation_appl_params
+                              annotation_appl_keyword_param
+                              annotation_appl_keyword_params
 
 %destructor { free($$); } <identifier> <scoped_name> <string_literal>
 
-%destructor { idl_delete_node($$); } <node> <variant> <binary_expr> <unary_expr> <literal> <sequence>
+%destructor { idl_delete_node($$); } <node> <constval> <binary_expr> <unary_expr> <literal> <sequence>
                                      <string> <module_dcl> <struct_dcl> <forward_dcl> <member> <union_dcl>
                                      <_case> <case_label> <enum_dcl> <enumerator> <declarator> <typedef_dcl>
                                      <const_dcl> <annotation_appl> <annotation_appl_param>
@@ -273,15 +299,18 @@ definitions:
 
 definition:
     annotation_appls module_dcl ';'
-      { annotate($2, $1);
+      { if (proc->flags & IDL_FLAG_ANNOTATIONS)
+          TRY(idl_annotate(proc, $2, $1));
         $$ = $2;
       }
   | annotation_appls const_dcl ';'
-      { annotate($2, $1);
+      { if (proc->flags & IDL_FLAG_ANNOTATIONS)
+          TRY(idl_annotate(proc, $2, $1));
         $$ = $2;
       }
   | annotation_appls type_dcl ';'
-      { annotate($2, $1);
+      { if (proc->flags & IDL_FLAG_ANNOTATIONS)
+          TRY(idl_annotate(proc, $2, $1));
         $$ = $2;
       }
   ;
@@ -439,13 +468,19 @@ unary_operator:
 primary_expr:
     scoped_name
       { const idl_symbol_t *sym;
-        if (!(sym = idl_find_symbol(proc, NULL, $1, NULL)))
-          ABORT(proc, &@1, "scoped name %s cannot be resolved", $1);
-        if (sym->node->mask != (IDL_DECL | IDL_CONST) &&
-            sym->node->mask != (IDL_DECL | IDL_ENUMERATOR))
-          ABORT(proc, &@1, "scoped name %s does not resolve to a constant", $1);
-        $$ = reference((void *)sym->node);
-        free($1);
+        sym = idl_find_symbol(proc, NULL, $1, NULL);
+        if (!sym && proc->annotation_appl_params) {
+          TRY(idl_create_literal(proc, &$$, &@1, IDL_STRING));
+          ((idl_literal_t *)$$)->value.str = $1;
+        } else {
+          if (!sym)
+            ABORT(proc, &@1, "scoped name %s cannot be resolved", $1);
+          if (sym->node->mask != (IDL_DECL | IDL_CONST) &&
+              sym->node->mask != (IDL_DECL | IDL_ENUMERATOR))
+            ABORT(proc, &@1, "scoped name %s does not resolve to a constant", $1);
+          $$ = reference((void *)sym->node);
+          free($1);
+        }
       }
   | literal
       { $$ = $1; }
@@ -455,23 +490,23 @@ primary_expr:
 
 literal:
     IDL_TOKEN_INTEGER_LITERAL
-      { MAKE($$, &@1.first, &@1.last, idl_create_literal, IDL_ULLONG);
+      { TRY(idl_create_literal(proc, &$$, &@1, IDL_ULLONG));
         $$->value.ullng = $1;
       }
   | boolean_literal
   | string_literal
-      { MAKE($$, &@1.first, &@1.last, idl_create_literal, IDL_STRING);
+      { TRY(idl_create_literal(proc, &$$, &@1, IDL_STRING));
         $$->value.str = $1;
       }
   ;
 
 boolean_literal:
     IDL_TOKEN_TRUE
-      { MAKE($$, &@1.first, &@1.last, idl_create_literal, IDL_BOOL);
+      { TRY(idl_create_literal(proc, &$$, &@1, IDL_BOOL));
         $$->value.bln = true;
       }
   | IDL_TOKEN_FALSE
-      { MAKE($$, &@1.first, &@1.last, idl_create_literal, IDL_BOOL);
+      { TRY(idl_create_literal(proc, &$$, &@1, IDL_BOOL));
         $$->value.bln = false;
       }
   ;
@@ -490,7 +525,8 @@ positive_int_const:
           YYABORT;
         if (intval.negative)
           ABORT(proc, idl_location($1), "size must be greater than zero");
-        MAKE($$, &@1.first, &@1.last, idl_create_const_ullong, intval.value.ullng);
+        TRY(idl_create_constval(proc, &$$, &@1, IDL_ULLONG));
+        $$->value.ullng = intval.value.ullng;
         idl_delete_node($1);
       }
   ;
@@ -625,71 +661,66 @@ struct_dcl:
   ;
 
 struct_def:
-    struct_header '{' members '}'
+    struct_header '{' struct_body '}'
       { idl_exit_scope(proc, $1->identifier);
         locate($1, &@1.first, &@3.last);
-        if ($3)
+        assert($3 || (proc->flags & IDL_FLAG_EXTENDED_DATA_TYPES));
+        if ($3) {
           merge($$, &$$->members, $3);
+        }
       }
   ;
 
 struct_header:
-    "struct" identifier ':' scoped_name
-      { const idl_symbol_t *sym = idl_find_symbol(proc, idl_scope(proc), $4, NULL);
-        if (!sym)
-          ABORT(proc, &@4, "Unknown type %s", $4);
-        if (!idl_enter_scope(proc, $2))
-          goto yyexhaustedlab;
-        MAKE($$, &@1.first, &@2.last, idl_create_struct);
-        $$->identifier = $2;
-        $$->base_type = reference(sym->node);
-      }
-  | "struct" identifier
+    "struct" identifier struct_base_type
       { if (!idl_enter_scope(proc, $2))
           goto yyexhaustedlab;
-        MAKE($$, &@1.first, &@2.last, idl_create_struct);
-        $$->identifier = $2;
+        idl_location_t loc = { @1.first, @2.last };
+        TRY(idl_create_struct(proc, &$$, &loc, $2, $3));
+        $$->base_type = $3;
       }
   ;
 
-members:
+struct_base_type:
+    /* IDL 4.2 section 7.4.13 Building Block Extended Data-Types */
+    %?{ (proc->flags & IDL_FLAG_EXTENDED_DATA_TYPES) }
+    ':' scoped_name
+      { const idl_symbol_t *sym = idl_find_symbol(proc, idl_scope(proc), $3, NULL);
+        if (!sym)
+          ABORT(proc, &@3, "scoped name %s cannot be resolved", $3);
+        if (!idl_is_masked(sym->node, IDL_STRUCT) || idl_is_masked(sym->node, IDL_FORWARD))
+          ABORT(proc, &@3, "scoped name %s does not resolve to a struct", $3);
+        $$ = reference((idl_node_t *)sym->node);
+      }
+  |   { $$ = NULL; }
+  ;
+
+struct_body:
+    members
+      { $$ = $1; }
+    /* IDL 4.2 section 7.4.13 Building Block Extended Data-Types */
+  | %?{ (proc->flags & IDL_FLAG_EXTENDED_DATA_TYPES) }
       { $$ = NULL; }
-  | member
+  ;
+
+members:
+    member
       { $$ = $1; }
   | members member
-      { if ($1) {
-          push($1, $2);
-          $$ = $1;
-        } else {
-          $$ = $2;
-        }
+      { push($1, $2);
+        $$ = $1;
       }
   ;
 
 member:
     annotation_appls type_spec declarators ';'
-      { MAKE($$, &@2.first, &@4.last, idl_create_member);
-        annotate($$, $1);
-        if (((idl_node_t *)$2)->parent)
-          $$->type_spec = $2;
-        else
-          merge($$, &$$->type_spec, $2);
-        merge($$, &$$->declarators, $3);
+      { idl_location_t location = { @2.first, @4.last };
+        TRY(idl_create_member(proc, (idl_member_t **)&$$, &location, $2, $3));
+        if (proc->flags & IDL_FLAG_ANNOTATIONS)
+          TRY_CATCH(idl_annotate(proc, $$, $1), idl_delete_node($$));
+        idl_delete_node($1);
       }
   ;
-
-///* embedded-struct-def extension */
-//  | annotation_appls struct_def declarators ';'
-//      { if (!(proc->flags & IDL_FLAG_EMBEDDED_STRUCT_DEF))
-//          ABORT(proc, &@1, "embedded struct definitions are not allowed");
-//        /* FIXME: check no array declarators are used, unless embedded array
-//                  definitions or building block anonymous types are enabled */
-//        MAKE_NODE($$, &@2, idl_create_member);
-//        PUSH_NODE($$, &$$->node.annotations, $1);
-//        PUSH_NODE($$, &$$->type_spec, $2);
-//        PUSH_NODE($$, &$$->declarators, $3);
-//      }
-//  ;
 
 struct_forward_dcl:
     "struct" identifier
@@ -706,7 +737,8 @@ union_dcl:
 union_def:
     "union" identifier "switch" '(' annotation_appls switch_type_spec ')' '{' switch_body '}'
       { MAKE($$, &@1.first, &@10.last, idl_create_union);
-        annotate($6, $5);
+        if (proc->flags & IDL_FLAG_ANNOTATIONS)
+          TRY_CATCH(idl_annotate(proc, $6, $5), idl_delete_node($$));
         $$->identifier = $2;
         merge($$, &$$->switch_type_spec, $6);
         merge($$, &$$->cases, $9);
@@ -854,7 +886,8 @@ enumerators:
 enumerator:
     annotation_appls identifier
       { MAKE($$, &@2.first, &@2.last, idl_create_enumerator);
-        annotate($$, $1);
+        if (proc->flags & IDL_FLAG_ANNOTATIONS)
+          TRY(idl_annotate(proc, $$, $1));
         $$->identifier = $2;
       }
   ;
@@ -944,19 +977,10 @@ annotation_appls:
       }
 
 annotation_appl:
-    "@" at_scoped_name '(' const_expr ')'
-      { MAKE($$, &@1.first, &@4.last, idl_create_annotation_appl);
-        $$->scoped_name = $2;
-        merge($$, &$$->parameters, $4);
-      }
-  | "@" at_scoped_name '(' annotation_appl_params ')'
-      { MAKE($$, &@1.first, &@5.last, idl_create_annotation_appl);
-        $$->scoped_name = $2;
-        merge($$, &$$->parameters, $4);
-      }
-  | "@" at_scoped_name
-      { MAKE($$, &@1.first, &@2.last, idl_create_annotation_appl);
-        $$->scoped_name = $2;
+    "@" at_scoped_name annotation_appl_params
+      { idl_location_t loc = { @1.first, @2.last };
+        TRY(idl_create_annotation_appl(proc, &$$, &loc, $2, $3));
+        proc->annotation_appl_params = false;
       }
   ;
 
@@ -977,20 +1001,25 @@ at_scoped_name:
   ;
 
 annotation_appl_params:
-    annotation_appl_param
+      { $$ = NULL; }
+  | '(' { proc->annotation_appl_params = true; } const_expr ')'
+      { $$ = $3; }
+  | '(' { proc->annotation_appl_params = true; } annotation_appl_keyword_params ')'
+      { $$ = $3; }
+  ;
+
+annotation_appl_keyword_params:
+    annotation_appl_keyword_param
       { $$ = $1; }
-  | annotation_appl_params ',' annotation_appl_param
+  | annotation_appl_keyword_params ',' annotation_appl_keyword_param
       { push($1, $3);
         $$ = $1;
       }
   ;
 
-annotation_appl_param:
+annotation_appl_keyword_param:
     identifier '=' const_expr
-      { MAKE($$, &@1.first, &@3.last, idl_create_annotation_appl_param);
-        $$->identifier = $1;
-        merge($$, &$$->const_expr, $3);
-      }
+      { TRY(idl_create_annotation_appl_param(proc, &$$, &@1, $1, $3)); }
   ;
 
 %%
@@ -1019,14 +1048,6 @@ static void merge(void *parent, void *member, void *node)
   *(idl_node_t **)member = next;
   for (; next; next = next->next)
     next->parent = (idl_node_t *)parent;
-}
-
-static void annotate(void *node, idl_annotation_appl_t *annot)
-{
-  assert(node);
-  if (!annot)
-    return;
-  ((idl_node_t *)node)->annotations = annot;
 }
 
 static void locate(void *node, idl_position_t *floc, idl_position_t *lloc)

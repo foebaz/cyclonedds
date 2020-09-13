@@ -60,7 +60,7 @@ annotate_hashid(
   /* member ID must be computed from the member name if the annotation is used
      without any parameter or with the empty string as a parameter */
   if (!name || strcmp(name, "") == 0)
-    name = ((idl_member_t *)node)->declarators->identifier;
+    name = ((idl_member_t *)node)->declarators->name;
 
   *seen |= IDL_ANNOTATION_APPL_HASHID;
   ((idl_member_t *)node)->node.mask |= IDL_ID;

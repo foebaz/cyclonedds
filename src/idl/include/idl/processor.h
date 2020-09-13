@@ -125,6 +125,9 @@ struct idl_symbol {
   const idl_node_t *node;
 };
 
+typedef struct idl_scope idl_scope_t;
+struct idl_scope;
+
 /** @private */
 typedef struct idl_processor idl_processor_t;
 struct idl_processor {
@@ -158,13 +161,14 @@ struct idl_processor {
             FINAL, APPENDABLE and MUTABLE for @extensibility. */
   bool annotation_appl_params;
   void *locale;
-  char *scope;
-  struct {
+  idl_scope_t *global_scope;
+  const idl_scope_t *scope;
+  //struct {
     /* symbol table is a flat list of encountered declarations registered by
        the parser in order of appearance. multiple entries with the same name
        can exist, e.g. in the case of forward declarations */
-    idl_symbol_t *first, *last;
-  } table; /**< list of encountered declarations */
+  //  idl_symbol_t *first, *last;
+  //} table; /**< list of encountered declarations */
   struct {
     const char *cursor;
     const char *limit;
@@ -192,5 +196,7 @@ idl_error(idl_processor_t *proc, const idl_location_t *loc, const char *fmt, ...
 
 IDL_EXPORT void
 idl_warning(idl_processor_t *proc, const idl_location_t *loc, const char *fmt, ...);
+
+#include "idl/scope.h"
 
 #endif /* IDL_PROCESSOR_H */

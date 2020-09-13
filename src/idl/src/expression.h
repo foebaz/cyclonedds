@@ -28,6 +28,16 @@ struct idl_intval {
 };
 
 /** @private */
+typedef long double idl_floatval_t;
+
+IDL_EXPORT idl_retcode_t
+idl_evaluate(
+  idl_processor_t *proc,
+  idl_node_t **nodeptr,
+  const idl_const_expr_t *expr,
+  idl_mask_t type);
+
+/** @private */
 IDL_EXPORT idl_retcode_t
 idl_eval_int_expr(
   idl_processor_t *proc,

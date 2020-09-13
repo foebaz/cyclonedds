@@ -34,8 +34,6 @@
 #include "idl/processor.h"
 #include "idl/string.h"
 #include "directive.h"
-#include "scope.h"
-#include "table.h"
 #include "tree.h"
 #include "parser.h"
 
@@ -143,44 +141,55 @@ parse_line(idl_processor_t *proc, idl_token_t *tok)
 static int32_t
 push_keylist(idl_processor_t *proc, idl_pragma_keylist_t *dir)
 {
+  idl_entry_t *entry;
   idl_struct_t *_struct;
   idl_keylist_t *keylist;
-  const idl_symbol_t *sym;
-  const char *name, *scope;
+  //const idl_symbol_t *sym;
+  const char *identifier;
+  //, *scope;
 
   keylist = dir->keylist;
   assert(keylist);
 
-  name = keylist->data_type->identifier;
-  scope = idl_scope(proc);
-
-  {
-    char *scoped_name;
-    const char *fmt = strcmp(scope, "::") == 0 ? "%s%s" : "%s::%s";
-    if (idl_asprintf(&scoped_name, fmt, scope, name) == -1) {
-      return IDL_RETCODE_NO_MEMORY;
-    }
-    if ((sym = idl_find_symbol(proc, NULL, scoped_name, NULL))) {
-      while (sym && idl_is_masked(sym->node, IDL_FORWARD))
-        sym = idl_find_symbol(proc, NULL, scoped_name, sym);
-    }
-    free(scoped_name);
+  identifier = keylist->data_type->identifier;
+  for (entry = proc->scope->table.first; entry; entry = entry->next) {
+    if (idl_strcasecmp(entry->name->identifier, identifier) == 0)
+      break;
   }
+  //scope = idl_scope(proc);
+  //
+  //{
+  //  char *scoped_name;
+  //  const char *fmt = strcmp(scope, "::") == 0 ? "%s%s" : "%s::%s";
+  //  if (idl_asprintf(&scoped_name, fmt, scope, name) == -1) {
+  //    return IDL_RETCODE_NO_MEMORY;
+  //  }
+  //  if ((sym = idl_find_symbol(proc, NULL, scoped_name, NULL))) {
+  //    while (sym && idl_is_masked(sym->node, IDL_FORWARD))
+  //      sym = idl_find_symbol(proc, NULL, scoped_name, sym);
+  //  }
+  //  free(scoped_name);
+  //}
 
-  if (!sym) {
+  if (!entry) {
     idl_error(proc, idl_location(dir->keylist->data_type),
-      "unknown data-type %s in keylist directive", name);
+      "unknown data-type %s in keylist directive", identifier);
+    return IDL_RETCODE_SEMANTIC_ERROR;
+  }
+  if (strcmp(identifier, entry->name->identifier) != 0) {
+    idl_error(proc, idl_location(dir->keylist->data_type),
+      "data-type '%s' differs in case", identifier);
     return IDL_RETCODE_SEMANTIC_ERROR;
   }
 
-  _struct = (idl_struct_t *)sym->node;
+  _struct = (idl_struct_t *)entry->node;
   if (!idl_is_struct(_struct)) {
     idl_error(proc, idl_location(dir->keylist->data_type),
-      "data-type %s in keylist directive is not a struct", name);
+      "data-type %s in keylist directive is not a struct", identifier);
     return IDL_RETCODE_SEMANTIC_ERROR;
   } else if (_struct->keylist) {
     idl_error(proc, idl_location(dir->keylist->data_type),
-      "redefinition of keylist for struct %s", name);
+      "redefinition of keylist for struct %s", identifier);
     return IDL_RETCODE_SEMANTIC_ERROR;
   }
 
@@ -195,7 +204,7 @@ push_keylist(idl_processor_t *proc, idl_pragma_keylist_t *dir)
       idl_declarator_t *declarator = member->declarators;
       assert(declarator);
       for (; declarator; declarator = idl_next(declarator)) {
-        if (strcmp(declarator->identifier, key->identifier) == 0)
+        if (strcmp(declarator->name->identifier, key->identifier) == 0)
           break;
       }
       if (declarator)

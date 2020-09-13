@@ -17,11 +17,19 @@
  * Types and functions for IDL compiler backends.
  */
 
+// The first phase is preprocessing, which performs file inclusion and macro substitution. Preprocessing is controlled by
+// directives introduced by lines having # as the first character other than white space. The result of preprocessing is a
+// sequence of tokens. Such a sequence of tokens, that is, a file after preprocessing, is called a translation unit.
+
 #include <stdbool.h>
 #include <stdint.h>
 
 #include "idl/export.h"
 #include "idl/retcode.h"
+
+typedef struct idl_scope idl_scope_t;
+typedef struct idl_scoped_name idl_scoped_name_t;
+typedef struct idl_name idl_name_t;
 
 typedef struct idl_file idl_file_t;
 struct idl_file {
@@ -157,6 +165,7 @@ struct idl_node {
   int16_t references; /**< number of references to node */
   idl_location_t location;
   idl_annotation_appl_t *annotations;
+  const idl_scope_t *scope;
   idl_node_t *parent; /**< pointer to parent node */
   idl_node_t *previous, *next; /**< pointers to sibling nodes */
   idl_print_t printer;
@@ -213,11 +222,16 @@ typedef struct idl_constval idl_constval_t;
 struct idl_constval {
   idl_node_t node;
   union {
-    uint8_t oct;
-    int32_t lng;
-    uint32_t ulng;
-    int64_t llng;
-    uint64_t ullng;
+    bool bln;
+    char chr;
+    int8_t int8;
+    uint8_t uint8, oct;
+    int16_t int16, shrt;
+    uint16_t uint16, ushrt;
+    int32_t int32, lng;
+    uint32_t uint32, ulng;
+    int64_t int64, llng;
+    uint64_t uint64, ullng;
     float flt;
     double dbl;
     long double ldbl;
@@ -248,13 +262,13 @@ struct idl_string {
 typedef struct idl_annotation_appl_param idl_annotation_appl_param_t;
 struct idl_annotation_appl_param {
   idl_node_t node;
-  char *identifier;
+  idl_name_t *name;
   idl_const_expr_t *const_expr;
 };
 
 struct idl_annotation_appl {
   idl_node_t node;
-  char *scoped_name;
+  idl_scoped_name_t *scoped_name;
   /* FIXME: either an expression or a list of parameters, needs work */
   idl_annotation_appl_param_t *parameters;
 };
@@ -281,7 +295,7 @@ typedef struct idl_const idl_const_t;
 struct idl_const {
   idl_node_t node;
   idl_const_type_t *type_spec;
-  char *identifier;
+  idl_name_t *name;
   idl_const_expr_t *const_expr;
 };
 
@@ -289,14 +303,14 @@ struct idl_const {
 typedef struct idl_module idl_module_t;
 struct idl_module {
   idl_node_t node;
-  char *identifier;
+  idl_name_t *name;
   idl_definition_t *definitions;
 };
 
 typedef struct idl_declarator idl_declarator_t;
 struct idl_declarator {
   idl_node_t node;
-  char *identifier;
+  idl_name_t *name;
   idl_const_expr_t *const_expr; /**< array sizes */
 };
 
@@ -340,7 +354,7 @@ typedef struct idl_struct idl_struct_t;
 struct idl_struct {
   idl_node_t node;
   idl_struct_t *base_type; /**< Base type extended by struct (optional) */
-  char *identifier;
+  idl_name_t *name;
   idl_member_t *members;
   idl_keylist_t *keylist;
   idl_autoid_t autoid;
@@ -364,7 +378,7 @@ struct idl_case {
 typedef struct idl_union idl_union_t;
 struct idl_union {
   idl_node_t node;
-  char *identifier;
+  idl_name_t *name;
   idl_switch_type_spec_t *switch_type_spec;
   idl_case_t *cases;
 };
@@ -372,21 +386,21 @@ struct idl_union {
 typedef struct idl_enumerator idl_enumerator_t;
 struct idl_enumerator {
   idl_node_t node;
-  char *identifier;
+  idl_name_t *name;
   uint32_t value; /* FIXME: for @value */
 };
 
 typedef struct idl_enum idl_enum_t;
 struct idl_enum {
   idl_node_t node;
-  char *identifier;
+  idl_name_t *name;
   idl_enumerator_t *enumerators;
 };
 
 typedef struct idl_forward idl_forward_t;
 struct idl_forward {
   idl_node_t node;
-  char *identifier;
+  idl_name_t *name;
   idl_constr_type_spec_t *constr_type; /**< union or struct declaration */
 };
 
@@ -423,6 +437,8 @@ IDL_EXPORT const idl_location_t *idl_location(const void *node);
 IDL_EXPORT void *idl_parent(const void *node);
 IDL_EXPORT void *idl_previous(const void *node);
 IDL_EXPORT void *idl_next(const void *node);
+IDL_EXPORT void *idl_unalias(const void *node);
+IDL_EXPORT idl_scope_t *idl_scope(const void *node);
 
 IDL_EXPORT idl_retcode_t
 idl_parse_string(const char *str, uint32_t flags, idl_tree_t **treeptr);

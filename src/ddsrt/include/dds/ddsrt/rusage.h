@@ -22,7 +22,10 @@
 # else
 #   define DDSRT_HAVE_RUSAGE 0
 #endif
-#elif defined (_WIN32) || defined (__linux) || defined (__APPLE__)
+#elif defined _WIN32 || \
+      defined __linux || \
+      defined __APPLE__ || \
+      defined __FreeBSD__
 # define DDSRT_HAVE_RUSAGE 1
 #else
 # define DDSRT_HAVE_RUSAGE 0

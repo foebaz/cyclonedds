@@ -135,7 +135,7 @@ freebsd12_clang8: &freebsd12_clang8
   compiler: clang
   addons:
     pkg:
-      packages: [ py37-pip ]
+      packages: [ py37-pip, openjdk11, maven ]
   before_install:
     - eval "export BUILD_TOOL_OPTIONS='-j 4'"
     - eval "export GENERATOR='Unix Makefiles'"

@@ -204,8 +204,53 @@ static int idlc_printf(OUTDEST od, const char *fmt, ...)
   return ret < 0 ? -1 : ret;
 }
 
+static idl_retcode_t figure_file(idl_file_t **filep)
+{
+  idl_file_t *file;
+  char *dir = NULL, *abs = NULL, *name = NULL, *norm = NULL;
+  const char *sep = NULL, *ptr;
+
+  if (!(file = malloc(sizeof(*file))))
+    goto err_file;
+  /* determine "relative" file name */
+  for (ptr=opts.file; *ptr; ptr++) {
+    if (idl_isseparator(*ptr))
+      sep = ptr;
+  }
+  if (!(name = idl_strdup(sep ? sep : opts.file)))
+    goto err_name;
+  if (idl_isabsolute(opts.file)) {
+    if (idl_normalize_path(opts.file, &norm) < 0)
+      goto err_file;
+  } else {
+    if (idl_current_path(&dir) < 0)
+      goto err_dir;
+    if (idl_asprintf(&abs, "%s/%s", dir, opts.file) == -1)
+      goto err_abs;
+    if (idl_normalize_path(abs, &norm) < 0)
+      goto err_norm;
+    free(abs);
+  }
+  file->next = NULL;
+  file->name = name;
+  file->path = norm;
+  *filep = file;
+  return IDL_RETCODE_OK;
+err_norm:
+  free(abs);
+err_abs:
+  free(dir);
+err_dir:
+  free(name);
+err_name:
+  free(file);
+err_file:
+  return IDL_RETCODE_NO_MEMORY;
+}
+
 static int32_t idlc_parse(idl_tree_t **treeptr)
 {
+  idl_file_t *file = NULL;
   idl_tree_t *tree;
   int32_t ret = 0;
 
@@ -218,8 +263,13 @@ static int32_t idlc_parse(idl_tree_t **treeptr)
       return ret;
     }
     assert(opts.file);
-    if (strcmp(opts.file, "-") != 0)
-      proc.scanner.position.file = (const char *)opts.file;
+    if (strcmp(opts.file, "-") != 0 && (ret = figure_file(&file)) != 0) {
+      idl_processor_fini(&proc);
+      free(tree);
+      return ret;
+    }
+    proc.files = file;
+    proc.scanner.position.file = (const idl_file_t *)file;
     proc.scanner.position.line = 1;
     proc.scanner.position.column = 1;
     proc.flags |= IDL_WRITE;
@@ -236,7 +286,7 @@ static int32_t idlc_parse(idl_tree_t **treeptr)
     }
     proc.flags &= ~IDL_WRITE;
   } else {
-    FILE *fin;
+    FILE *fin = NULL;
     char buf[1024];
     size_t nrd;
     int nwr;

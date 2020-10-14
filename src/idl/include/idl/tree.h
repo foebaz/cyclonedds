@@ -27,15 +27,29 @@ struct idl_scope;
 struct idl_name;
 struct idl_scoped_name;
 
+/* FIXME: for proper handling of includes by parsing #line directives, GCCs
+          extended #line directive or linecontrols is required, which can be
+          enabled in mcpp to by defining the compiler to be GNUC instead of
+          INDEPENDANT.
+ https://stackoverflow.com/questions/5370539/what-is-the-meaning-of-lines-starting-with-a-hash-sign-and-number-like-1-a-c
+ https://gcc.gnu.org/onlinedocs/cpp/Preprocessor-Output.html */
+
 typedef struct idl_file idl_file_t;
 struct idl_file {
   idl_file_t *next;
-  char *name;
+  char *name; /**< relative path from translation unit */
+  char *path; /**< absolute path */
 };
 
 typedef struct idl_position idl_position_t;
 struct idl_position {
-  const char *file;
+  /* FIXME: for error reporting purposes, the "filename" must be kept, i.e.
+            what was provided in the #line directive. on includes, idlpp
+            provides the proper flags and this becomes the absolute filename.
+            however, if there were user provided #line directives in the file,
+            this is the "filename" that was provided by the user. the actual
+            file should remain the actual file that is currently processed */
+  const idl_file_t *file;
   uint32_t line;
   uint32_t column;
 };

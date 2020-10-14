@@ -39,31 +39,105 @@
 #include "tree.h"
 #include "directive.h"
 
+static idl_retcode_t
+push_file(idl_processor_t *proc, idl_file_t **filep, const char *path)
+{
+  idl_file_t *file = NULL;
+  char *abs = NULL, *rel = NULL;
+  unsigned sys = 0;
+
+  /* convert to absolute file name */
+  /* FIXME: incorrect! whether or not the file is a system include, must be
+            communicated by the preprocessor */
+  if (!(sys = idl_isabsolute(path))) {
+    /* include paths are relative to the current file. so, strip file name,
+       postfix with "../relative/path/to/file" and normalize */
+    char *norm = NULL;
+    const char *dir = proc->scanner.position.file->path;
+    const char *sep = dir;
+    assert(idl_isabsolute(dir));
+    for (size_t i=0; dir[i]; i++) {
+      if (idl_isseparator((unsigned char)dir[i]))
+        sep = &dir[i];
+    }
+    if (idl_asprintf(&abs, "%.*s/%s", (sep-dir), dir, path) == -1)
+      goto err_abs;
+    if (idl_normalize_path(abs, &norm) < 0)
+      goto err_norm;
+    free(abs);
+    abs = norm;
+  } else {
+    if (idl_normalize_path(path, &abs) < 0)
+      goto err_abs;
+  }
+
+  /* see if file exists already, use absolute name as key */
+  for (file = proc->files; file; file = file->next) {
+    if (strcmp(file->path, abs) == 0) {
+      free(abs);
+      goto ok;
+    }
+  }
+
+  /* resolve relative path to file from translation unit (if file was not a
+     system include) */
+  if (!sys && strncmp(abs, proc->files->path, sys) == 0) {
+    char *dir;
+    size_t sep = 0;
+    ssize_t len;
+    if (!(dir = idl_strdup(proc->files->path)))
+      goto err_rel;
+    for (size_t i=0; dir[i]; i++) {
+      if (idl_isseparator(dir[i]))
+        sep = i;
+    }
+    dir[sep] = '\0';
+    len = idl_relative_path(dir, abs, &rel);
+    free(dir);
+    if (len < 0)
+      goto err_rel;
+  } else if (!(rel = idl_strdup(abs))) {
+    goto err_rel;
+  }
+
+  if (!(file = malloc(sizeof(*file))))
+    goto err_file;
+  file->next = NULL;
+  file->path = abs;
+  file->name = rel;
+
+  if (proc->files) {
+    /* maintain order to ensure translation unit is first */
+    idl_file_t *last;
+    for (last = proc->files; last->next; last = last->next) ;
+    last->next = file;
+  } else {
+    proc->files = file;
+  }
+
+ok:
+  *filep = file;
+  return IDL_RETCODE_OK;
+err_file:
+  free(rel);
+err_rel:
+err_norm:
+  free(abs);
+err_abs:
+  return IDL_RETCODE_NO_MEMORY;
+}
+
 static int32_t
 push_line(idl_processor_t *proc, idl_line_t *dir)
 {
+  idl_file_t *file;
+  idl_retcode_t ret;
+
   if (dir->file) {
-    idl_file_t *file;
-    for (file = proc->files; file; file = file->next) {
-      if (strcmp(dir->file->value.str, file->name) == 0)
-        break;
-    }
-    if (!file) {
-      idl_file_t *last;
-      if (!(file = calloc(1, sizeof(*file))))
-        return IDL_RETCODE_NO_MEMORY;
-      file->name = dir->file->value.str;
-      if (proc->files) {
-        /* maintain order to ensure the first file is actually first */
-        for (last = proc->files; last->next; last = last->next) ;
-        last->next = file;
-      } else {
-        proc->files = file;
-      }
-    } else {
-      free(dir->file->value.str);
-    }
-    proc->scanner.position.file = (const char *)file->name;
+    if ((ret = push_file(proc, &file, dir->file->value.str)) != 0)
+      return ret;
+    proc->scanner.position.file = (const idl_file_t *)file;
+    free(dir->file->value.str);
     free(dir->file);
   }
   proc->scanner.position.line = (uint32_t)dir->line->value.ullng;

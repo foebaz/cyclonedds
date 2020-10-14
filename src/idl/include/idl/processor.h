@@ -24,6 +24,7 @@
 #include "idl/retcode.h"
 #include "idl/tree.h"
 #include "idl/scope.h"
+#include "idl/file.h"
 
 /** @private */
 typedef struct idl_buffer idl_buffer_t;

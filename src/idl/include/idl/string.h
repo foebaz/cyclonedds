@@ -29,4 +29,6 @@ IDL_EXPORT int idl_asprintf(char **strp, const char *fmt, ...);
 
 IDL_EXPORT int idl_vasprintf(char **strp, const char *fmt, va_list ap);
 
+IDL_EXPORT char *idl_strtok_r(char *str, const char *delim, char **saveptr);
+
 #endif /* IDL_STRING_H */

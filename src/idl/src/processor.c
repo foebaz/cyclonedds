@@ -121,6 +121,8 @@ void idl_processor_fini(idl_processor_t *proc)
         next = file->next;
         if (file->name)
           free(file->name);
+        if (file->path)
+          free(file->path);
         free(file);
       }
     }
@@ -143,7 +145,7 @@ idl_log(
   (void)prio;
   if (loc->first.file)
     cnt = snprintf(
-      buf, sizeof(buf)-1, "%s:%u:%u: ", loc->first.file, loc->first.line, loc->first.column);
+      buf, sizeof(buf)-1, "%s:%u:%u: ", loc->first.file->name, loc->first.line, loc->first.column);
   else
     cnt = snprintf(
       buf, sizeof(buf)-1, "%u:%u: ", loc->first.line, loc->first.column);

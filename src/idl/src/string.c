@@ -154,3 +154,12 @@ idl_vasprintf(
 
   return ret;
 }
+
+char *idl_strtok_r(char *str, const char *delim, char **saveptr)
+{
+#if _WIN32
+  return strtok_s(str, delim, saveptr);
+#else
+  return strtok_r(str, delim, saveptr);
+#endif
+}

@@ -34,7 +34,7 @@ compare_position(idl_position_t *a, idl_position_t *b)
     return 0;
   if (!b->file)
     return 1;
-  return strcmp(a->file, b->file);
+  return strcmp(a->file->name, b->file->name);
 }
 
 static void

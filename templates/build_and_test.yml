@@ -1,0 +1,68 @@
+steps:
+   - task: CacheBeta@0
+     inputs:
+       key: maven
+       path: $(MAVEN_CACHE_FOLDER)
+     displayName: Cache Maven local repo
+   - task: CMake@1
+     displayName: 'CMake configure core product'
+     inputs:
+       cmakeArgs: '-DCMAKE_BUILD_TYPE=$(BuildType)
+          -DCMAKE_INSTALL_PREFIX=$(Build.SourcesDirectory)/build/install
+          -DBUILD_TESTING=on
+          -DUSE_SANITIZER=$(USE_SANITIZER)
+          -DENABLE_SSL=$(SSL)
+          -DENABLE_SECURITY=$(SECURITY)
+          -DENABLE_LIFESPAN=$(LIFESPAN)
+          -DENABLE_DEADLINE_MISSED=$(DEADLINE)
+          -DBUILD_TESTING=on
+          -DWERROR=on
+          -G "$(GENERATOR)" ..'
+   - bash: |
+      case "$(GENERATOR)" in
+         "Unix Makefiles")
+           cmake --build . --config $(BuildType) --target install -- -j 4
+           ;;
+         "Visual Studio "*)
+           cmake --build . --config $(BuildType) --target install -- -nologo -verbosity:minimal -maxcpucount -p:CL_MPCount=2
+           ;;
+         *)
+           cmake --build . --config $(BuildType) --target install
+           ;;
+       esac
+     workingDirectory: build
+     failOnStderr: false
+     displayName: 'Compile'
+   - bash: |
+       ctest -j 4 --output-on-failure -T test -E '^CUnit_ddsrt_random_default_random$' -C $(BuildType)
+     continueOnError: true
+     workingDirectory: build
+     failOnStderr: false
+     displayName: 'Test'
+     env:
+        CYCLONEDDS_URI: '$(CYCLONEDDS_URI)'
+   - script: |
+       ci_addons ctest_junit_formatter "$(Build.SourcesDirectory)/build" > "$(Build.SourcesDirectory)/build/JUnitTestResults.xml"
+     displayName: 'Format CTest output in JUnit format'
+   - task: PublishTestResults@2
+     inputs:
+       testResultsFiles: "$(Build.SourcesDirectory)/build/JUnitTestResults.xml"
+       testRunTitle: 'CTest $(AGENT.JOBNAME)'
+     displayName: 'Publish test results'
+   - script: |
+       cmake --build . --config $(BuildType) --target package
+     workingDirectory: build
+     failOnStderr: false
+     displayName: 'Create installer'
+   - task: CopyFiles@2
+     inputs:
+       sourceFolder: '$(Build.SourcesDirectory)'
+       targetFolder: '$(Build.ArtifactStagingDirectory)'
+       contents: 'build/?(*.deb|*.msi|*.tar.gz|*.tar|*.zip|*.sh)'
+     displayName: 'Copy installer'
+   - task: PublishBuildArtifacts@1
+     inputs:
+       pathtoPublish: '$(Build.ArtifactStagingDirectory)'
+       artifactName: installer_$(AGENT.JOBNAME)
+     displayName: 'Publish installer'
+     
